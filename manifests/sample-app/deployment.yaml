@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: sample-iam-webhook-app
+  name: awscli
+  labels:
+    app.kubernetes.io/name: awscli
+    app.kubernetes.io/component: app
+    app.kubernetes.io/part-of: openshift-aws-iam-webhook-integration
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: awscli
+  template:
+    metadata:
+      labels:
+        app: awscli
+        app.kubernetes.io/name: awscli
+        app.kubernetes.io/component: app
+        app.kubernetes.io/part-of: openshift-aws-iam-webhook-integration
+    spec:
+      containers:
+        - image: docker.io/sjenning/awscli:latest
+          name: awscli
+          command:
+            - /bin/sh
+            - "-c"
+            - while true; do sleep 10; done
+          env:
+            - name: HOME
+              value: /tmp
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      serviceAccount: s3-manager

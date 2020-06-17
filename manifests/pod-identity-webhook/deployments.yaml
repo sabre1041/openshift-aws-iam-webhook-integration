@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-identity-webhook
+  namespace: pod-identity-webhook
+  labels:
+    app.kubernetes.io/name: pod-identity-webhook
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: openshift-aws-iam-webhook-integration
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pod-identity-webhook
+  template:
+    metadata:
+      labels:
+        app: pod-identity-webhook
+        app.kubernetes.io/name: pod-identity-webhook
+        app.kubernetes.io/component: webhook
+        app.kubernetes.io/part-of: openshift-aws-iam-webhook-integration
+    spec:
+      serviceAccountName: pod-identity-webhook
+      containers:
+        - name: pod-identity-webhook
+          image: docker.io/sjenning/pod-identity-webhook:latest
+          imagePullPolicy: Always
+          command:
+            - /webhook
+            - --in-cluster
+            - --namespace=pod-identity-webhook
+            - --service-name=pod-identity-webhook
+            - --tls-secret=pod-identity-webhook
+            - --port=8443
+            - --annotation-prefix=sts.amazonaws.com
+            - --token-audience=sts.amazonaws.com
+            - --logtostderr
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /var/run/app/certs
+              readOnly: false
+      volumes:
+        - name: webhook-certs
+          emptyDir: {}
