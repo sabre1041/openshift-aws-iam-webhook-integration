@@ -70,7 +70,7 @@ set -- "${POSITIONAL[@]}"
 command -v aws >/dev/null 2>&1 || { echo >&2 "AWS CLI is required but not installed.  Aborting."; exit 1; } 
 
 # Check if oc cli tool is installed
-command -v aws >/dev/null 2>&1 || { echo >&2 "AWS CLI is required but not installed.  Aborting."; exit 1; } 
+command -v oc >/dev/null 2>&1 || { echo >&2 "OpenShift CLI is required but not installed.  Aborting."; exit 1; }
 
 # Check if jq tool is installed
 command -v jq >/dev/null 2>&1 || { echo >&2 "jq is required but not installed.  Aborting."; exit 1; } 
