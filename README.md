@@ -7,9 +7,9 @@ Integration with AWS IAM Roles for accessing resources using the AWS Security To
 
 The contents within the repository prepare an Amazon Web Services (AWS) and OpenShift Container Platform (OCP) environment to participate in [Fine grained IAM Roles for Service Accounts](https://aws.amazon.com/blogs/opensource/introducing-fine-grained-iam-roles-service-accounts/). This enables access to AWS services through the use of a service account bound to an AWS IAM role instead of using hard coded keys.
 
-This integration is enabled to the use of a [MutatingWebhookConfiguration](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/) and [amazon-eks-pod-identity-webhook](https://github.com/aws/amazon-eks-pod-identity-webhook/blob/master/SELF_HOSTED_SETUP.md) project. 
+This integration is enabled to the use of a [MutatingWebhookConfiguration](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/) and [aws-pod-identity-webhook](https://github.com/openshift/aws-pod-identity-webhook) project that is built into OpenShit. 
 
-As part of the deployment of the webhook, any `ServiceAccount` in any project that is annotated with a a specific key (`sts.amazonaws.com` for this specific implementation) containing an IAM role will have a STS token automatically injected into all pods that make use of the Service Account. 
+As part of the deployment of the webhook, any `ServiceAccount` in any project that is annotated with a a specific key (`eks.amazonaws.com` for this specific implementation) containing an IAM role will have a STS token automatically injected into all pods that make use of the Service Account. 
 
 ### Demonstration of Functionality
 
@@ -46,6 +46,11 @@ By default, the Trust Policy that is configured allows access to bind to the IAM
     "Federated": "<OIDC_PROVIDER_ARN>"
    },
    "Action": "sts:AssumeRoleWithWebIdentity"
+   "Condition": {
+     "StringLike": {
+       "<OIDC_ENDPOINT>:sub": "system:serviceaccount:*:*"
+    }
+   }
   }
  ]
 }
@@ -63,20 +68,13 @@ kind: Authentication
 metadata:
   annotations:
     release.openshift.io/create-only: "true"
-  creationTimestamp: "2020-06-18T13:39:28Z"
-  generation: 1
   name: cluster
-  resourceVersion: "13601"
-  selfLink: /apis/config.openshift.io/v1/authentications/cluster
-  uid: 8fefaa1e-1778-4666-bf5d-76520a020a75
 spec:
   serviceAccountIssuer: https://s3.us-east-1.amazonaws.com/my-oidc-bucket
 status:
   integratedOAuthMetadata:
     name: oauth-openshift
 ```
-
-With OpenShift integrated to the OIDC identity provider, the a [MutatingWebhookConfiguration](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/) along with the [amazon-eks-pod-identity-webhook](https://github.com/aws/amazon-eks-pod-identity-webhook/blob/master/SELF_HOSTED_SETUP.md) must be deployed. It is deployed in a project called `pod-identity-webhook`.
 
 Finally, an application to demonstrate this functionality is deployed in a project called `sample-iam-webhook-app`. A service account is annotated with the ARN of the IAM role that has been configured with the appropriate access policies as shown below:
 
@@ -211,3 +209,8 @@ $ oc delete pod -n sample-iam-webhook-app  -l=app.kubernetes.io/component=app --
 ```
 
 3. Retry the desired action
+
+### OpenShift 4.4, 4.5, 4.6
+
+Initial support for AWS Security Token Service (STS) was added in OpenShift 4.4. Full integration was added in OpenShift 4.7 and can be used on this branch. For OpenShift version 4.4, 4.5 and 4.6, please use the [v4.4](https://github.com/sabre1041/openshift-aws-iam-webhook-integration/tree/v4.4) tag which contains the assets to deploy the Pod Identity Webhook to support the capabilities for these versions. 
+

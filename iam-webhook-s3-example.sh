@@ -151,7 +151,7 @@ fi
 # Create OIDC documents
 cat <<EOF > ${ASSETS_DIR}/discovery.json
 {
-    "issuer": "https://$ISSUER_HOSTPATH/",
+    "issuer": "https://$ISSUER_HOSTPATH",
     "jwks_uri": "https://$ISSUER_HOSTPATH/keys.json",
     "authorization_endpoint": "urn:kubernetes:programmatic_authorization",
     "response_types_supported": [
@@ -164,8 +164,12 @@ cat <<EOF > ${ASSETS_DIR}/discovery.json
         "RS256"
     ],
     "claims_supported": [
-        "sub",
-        "iss"
+      "aud",
+      "exp",
+      "sub",
+      "iat",
+      "iss",
+      "sub"
     ]
 }
 EOF
@@ -217,7 +221,12 @@ cat <<EOF > ${ASSETS_DIR}/trust-policy.json
    "Principal": {
     "Federated": "$OIDC_IDENTITY_PROVIDER_ARN"
    },
-   "Action": "sts:AssumeRoleWithWebIdentity"
+   "Action": "sts:AssumeRoleWithWebIdentity",
+   "Condition": {
+     "StringLike": {
+       "${ISSUER_HOSTPATH}:sub": "system:serviceaccount:*:*"
+    }
+   }
   }
  ]
 }
@@ -237,7 +246,7 @@ cat <<EOF > ${ASSETS_DIR}/bucket-policy.json
     {
       "Effect": "Allow",
       "Action": ["s3:ListBucket"],
-      "Resource": ["arn:aws:s3:::${S3_BUCKET_NAME}"]
+      "Resource": ["arn:aws:s3:::$.4{S3_BUCKET_NAME}"]
     },
     {
       "Effect": "Allow",
@@ -279,63 +288,15 @@ if [ "${role_arn}" == "" ]; then
   echo "Creating Assume Role Policy"
   role_arn=$(aws iam create-role --role-name ${BUCKET_ROLE_NAME} --assume-role-policy-document file://${ASSETS_DIR}/trust-policy.json --query Role.Arn --output text)
 else
-  echo "Updating Assime Role Policy"
+  echo "Updating Assume Role Policy"
   aws iam update-assume-role-policy --role-name ${BUCKET_ROLE_NAME} --policy-document file://${ASSETS_DIR}/trust-policy.json > /dev/null
 fi
 
 echo "Attaching Policy to IAM Role"
 aws iam attach-role-policy --role-name ${BUCKET_ROLE_NAME} --policy-arn ${policy_arn} > /dev/null
 
-echo "Creating OpenShift Manifests"
-until oc apply -f "${DIR}/manifests/pod-identity-webhook" 2>/dev/null; do sleep 2; done
-
-echo "Waiting for webhook pod to be deployed"
-oc rollout status deploy/pod-identity-webhook -n $POD_IDENTITY_WEBHOOK_NAMESPACE
-
-echo "Waiting for CSR's to be Created"
-until [ "$(oc get csr -o jsonpath="{ .items[?(@.spec.username==\"system:serviceaccount:$POD_IDENTITY_WEBHOOK_NAMESPACE:pod-identity-webhook\")].metadata.name}")" != "" ]; do sleep 2; done
-
-echo "Approving CSR's"
-for csr in `oc get csr -n ${POD_IDENTITY_WEBHOOK_NAMESPACE} -o name`; do
-  oc adm certificate approve $csr
-done
-
-
 echo "Patching OpenShift Cluster Authentication"
 oc patch authentication.config.openshift.io cluster --type "json" -p="[{\"op\": \"replace\", \"path\": \"/spec/serviceAccountIssuer\", \"value\":\"https://${ISSUER_HOSTPATH}\"}]"
-
-echo "Creating Mutating Webhook"
-CA_BUNDLE=$(oc get configmap -n kube-system extension-apiserver-authentication -o=jsonpath='{.data.client-ca-file}' | base64 | tr -d '\n')
-
-(
-cat <<EOF
-apiVersion: admissionregistration.k8s.io/v1beta1
-kind: MutatingWebhookConfiguration
-metadata:
-  name: pod-identity-webhook
-  namespace: pod-identity-webhook
-webhooks:
-- name: pod-identity-webhook.amazonaws.com
-  failurePolicy: Ignore
-  clientConfig:
-    service:
-      name: pod-identity-webhook
-      namespace: pod-identity-webhook
-      path: "/mutate"
-    caBundle: ${CA_BUNDLE}
-  rules:
-  - operations: [ "CREATE" ]
-    apiGroups: [""]
-    apiVersions: ["v1"]
-    resources: ["pods"]
-EOF
- ) | oc apply -f-
-
-echo "Rolling Webhook pods"
-oc delete pods -n ${POD_IDENTITY_WEBHOOK_NAMESPACE} -l=app.kubernetes.io/component=webhook
-
-echo "Waiting a moment...."
-sleep 10
 
 echo "Creating Sample Application Resources"
 oc apply -f "${DIR}/manifests/sample-app/namespace.yaml"
@@ -346,7 +307,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   annotations:
-    sts.amazonaws.com/role-arn: "${role_arn}"
+    eks.amazonaws.com/role-arn: "${role_arn}"
   name: s3-manager
   namespace: sample-iam-webhook-app
 EOF
